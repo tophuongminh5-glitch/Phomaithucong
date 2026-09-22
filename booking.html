@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đặt Lịch Trải Nghiệm Phô Mai Bò Buồn</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+        body { background-color: #fefae0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .container { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 10px 30px rgba(74, 55, 40, 0.1); width: 100%; max-width: 450px; border: 2px solid #e9edc9; }
+        .header { text-align: center; margin-bottom: 25px; }
+        .header h1 { font-size: 26px; color: #b5651d; margin-bottom: 5px; font-weight: bold; }
+        .account-balance { background: #fefae0; border: 1px dashed #d4a373; padding: 12px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; font-weight: bold; }
+        .balance-amount { color: #2a9d8f; font-size: 18px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: 600; font-size: 14px; color: #4a3728; }
+        input, select { width: 100%; padding: 12px; border: 1px solid #ccd5ae; border-radius: 8px; font-size: 15px; outline: none; }
+        .btn-submit { width: 100%; background: #d4a373; color: white; border: none; padding: 14px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.3s; }
+        .btn-submit:hover { background: #bfa054; }
+        .btn-submit:disabled { background: #cccccc; cursor: not-allowed; }
+        
+        /* Khung thông báo trạng thái */
+        .notification-box { background: #e8f4fd; border: 1px solid #bde0fe; padding: 15px; border-radius: 8px; margin-top: 20px; display: none; }
+        .status-text { font-weight: bold; margin-bottom: 5px; }
+        .msg-text { font-style: italic; color: #2c3e50; background: white; padding: 10px; border-radius: 6px; border-left: 4px solid #3498db; margin-top: 5px; }
+        .status-pending { color: #e67e22; }
+        .status-approved { color: #2ecc71; }
+        .status-rejected { color: #e74c3c; }
+        
+        /* Đồng hồ đếm ngược */
+        .countdown-timer { font-size: 18px; color: #e67e22; font-weight: bold; text-align: center; margin: 10px 0; background: #fff3cd; padding: 8px; border-radius: 6px; border: 1px solid #ffeeba; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1>Phô Mai Bò Buồn</h1>
+            <p>Hệ Thống Đặt Lịch ăn phô mai thủ công</p>
+        </div>
+
+        <div class="account-balance">
+            <span>Số dư tài khoản:</span>
+            <span class="balance-amount" id="balance-display">1.000.000₫</span>
+        </div>
+
+        <form id="bookingForm">
+            <div class="form-group">
+                <label for="workshop">Chọn loại phô mai</label>
+                <select id="workshop">
+                    <option value="200000">Phô mai cứt trâu (Ủ tro đen) (200.000₫)</option>
+                    <option value="250000">Phô mai bò chua (Lên men tươi) (250.000₫)</option>
+                    <option value="300000">Phô mai Bò Buồn đặc sản (300.000₫)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="date">Chọn ngày</label>
+                <input type="date" id="date" required>
+            </div>
+            <div class="form-group">
+                <label for="time">Chọn giờ bắt đầu</label>
+                <input type="time" id="time" required>
+            </div>
+            <button type="submit" class="btn-submit" id="btn-submit">ĐẶT LỊCH</button>
+        </form>
+
+        <!-- Khung hiển thị đếm ngược và kết quả từ Admin -->
+        <div class="notification-box" id="notification-box">
+            <div id="countdown-area" style="display:none;" class="countdown-timer">
+                ⏳ Vui lòng đợi <span id="timer-seconds">15</span> giây...
+            </div>
+            <div class="status-text" id="status-text"></div>
+            <div id="admin-msg-area" style="display:none;">
+                <p style="font-size: 13px; color: #555; margin-top: 8px;">💬 Tin nhắn từ Admin Bò Buồn:</p>
+                <div class="msg-text" id="msg-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        if (!localStorage.getItem('userBalance')) {
+            localStorage.setItem('userBalance', '1000000');
+        }
+        
+        let countdownInterval = null;
+
+        function updateUI() {
+            const balance = parseInt(localStorage.getItem('userBalance'));
+            document.getElementById('balance-display').innerText = balance.toLocaleString('vi-VN') + '₫';
+            
+            const currentOrder = JSON.parse(localStorage.getItem('currentOrder'));
+            const btn = document.getElementById('btn-submit');
+            const notiBox = document.getElementById('notification-box');
+            const statusText = document.getElementById('status-text');
+            const countdownArea = document.getElementById('countdown-area');
+            const adminMsgArea = document.getElementById('admin-msg-area');
+            const msgContent = document.getElementById('msg-content');
+
+            if (currentOrder) {
+                notiBox.style.display = 'block';
+                
+                if (currentOrder.status === 'pending') {
+                    btn.disabled = true;
+                    btn.innerText = 'ĐANG XỬ LÝ...';
+                    
+                    // Nếu đang đếm ngược 15s
+                    if (currentOrder.inCountdown) {
+                        countdownArea.style.display = 'block';
+                        statusText.innerHTML = '<span class="status-pending">Hệ thống đang tiếp nhận đơn hàng của bạn.</span>';
+                    } else {
+                        // Hết 15s nhưng admin vẫn chưa bấm duyệt
+                        countdownArea.style.display = 'none';
+                        statusText.innerHTML = '<span class="status-pending">⏳ Đang đợi admin phê duyệt và phản hồi...</span>';
+                    }
+                    adminMsgArea.style.display = 'none';
+                    
+                } else if (currentOrder.status === 'approved') {
+                    clearInterval(countdownInterval);
+                    btn.disabled = false;
+                    btn.innerText = 'ĐẶT LỊCH';
+                    countdownArea.style.display = 'none';
+                    statusText.innerHTML = '<span class="status-approved">✅ Đơn đặt lịch ĐƯỢC DUYỆT! (Đã trừ tiền số dư)</span>';
+                    if(currentOrder.adminMessage) {
+                        adminMsgArea.style.display = 'block';
+                        msgContent.innerText = currentOrder.adminMessage;
+                    }
+                } else if (currentOrder.status === 'rejected') {
+                    clearInterval(countdownInterval);
+                    btn.disabled = false;
+                    btn.innerText = 'ĐẶT LỊCH';
+                    countdownArea.style.display = 'none';
+                    statusText.innerHTML = '<span class="status-rejected">❌ Đơn đặt lịch đã BỊ TỪ CHỐI / HỦY!</span>';
+                    if(currentOrder.adminMessage) {
+                        adminMsgArea.style.display = 'block';
+                        msgContent.innerText = currentOrder.adminMessage;
+                    }
+                }
+            } else {
+                notiBox.style.display = 'none';
+                countdownArea.style.display = 'none';
+                btn.disabled = false;
+                btn.innerText = 'ĐẶT LỊCH';
+            }
+        }
+
+        document.getElementById('date').min = new Date().toISOString().split('T')[0];
+
+        document.getElementById('bookingForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const balance = parseInt(localStorage.getItem('userBalance'));
+            const selectEl = document.getElementById('workshop');
+            const price = parseInt(selectEl.value);
+            const cheeseName = selectEl.options[selectEl.selectedIndex].text.split(' (')[0];
+            const date = document.getElementById('date').value;
+            const time = document.getElementById('time').value;
+
+            if (balance < price) {
+                alert('Số dư tài khoản không đủ!');
+                return;
+            }
+
+            // Tạo đơn hàng mới ở trạng thái chờ duyệt và đang kích hoạt đếm ngược 15s
+            const newOrder = {
+                cheeseName: cheeseName,
+                price: price,
+                date: date,
+                time: time,
+                status: 'pending',
+                inCountdown: true,
+                adminMessage: ''
+            };
+
+            localStorage.setItem('currentOrder', JSON.stringify(newOrder));
+            updateUI();
+
+            // Chạy hiệu ứng đếm ngược 15 giây ảo trên màn hình khách
+            let timeLeft = 15;
+            document.getElementById('timer-seconds').innerText = timeLeft;
+            
+            clearInterval(countdownInterval);
+            countdownInterval = setInterval(() => {
+                timeLeft--;
+                document.getElementById('timer-seconds').innerText = timeLeft;
+                
+                if (timeLeft <= 0) {
+                    clearInterval(countdownInterval);
+                    // Lấy đơn mới nhất để tắt trạng thái đếm ngược (nếu admin chưa duyệt trước đó)
+                    const order = JSON.parse(localStorage.getItem('currentOrder'));
+                    if (order && order.status === 'pending') {
+                        order.inCountdown = false;
+                        localStorage.setItem('currentOrder', JSON.stringify(order));
+                    }
+                    updateUI();
+                }
+            }, 1000);
+        });
+window.addEventListener('storage', updateUI);updateUI();setInterval(updateUI, 1000);
